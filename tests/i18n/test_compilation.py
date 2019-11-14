@@ -236,3 +236,17 @@ class PathLibLocaleCompilationTests(MessageCompilationTests):
         with override_settings(LOCALE_PATHS=[Path(self.test_dir) / 'canned_locale']):
             call_command('compilemessages', locale=['fr'], stdout=StringIO())
             self.assertTrue(os.path.exists('canned_locale/fr/LC_MESSAGES/django.mo'))
+
+
+class MainPoCompilationTest(ProjectAndAppTests):
+
+    DJANGO_MO_FILE = 'django_dir/conf/locale/%s/LC_MESSAGES/django.mo'
+
+    def test_main_po_compiled(self):
+        out_buffer = StringIO()
+        with mock.patch('django.__file__', os.path.join(self.test_dir, 'django_dir/')):
+            call_command('compilemessages', locale=[self.LOCALE], main_po=True,
+                         stdout=out_buffer)
+            self.assertTrue(os.path.exists(self.PROJECT_MO_FILE))
+            self.assertTrue(os.path.exists(self.APP_MO_FILE))
+            self.assertTrue(os.path.exists(self.DJANGO_MO_FILE % self.LOCALE))

@@ -54,11 +54,16 @@ class Command(BaseCommand):
             help='Ignore directories matching this glob-style pattern. '
                  'Use multiple times to ignore more.',
         )
+        parser.add_argument(
+            '--main-po', '-m', dest='main-po', action='store_true',
+            help='Compile main .po file.'
+        )
 
     def handle(self, **options):
         locale = options['locale']
         exclude = options['exclude']
         ignore_patterns = set(options['ignore_patterns'])
+        compile_main_po = options['main-po']
         self.verbosity = options['verbosity']
         if options['fuzzy']:
             self.program_options = self.program_options + ['-f']
@@ -83,10 +88,18 @@ class Command(BaseCommand):
         # Gather existing directories.
         basedirs = set(map(os.path.abspath, filter(os.path.isdir, basedirs)))
 
+        # Address main po file only if it is run from a project directory,
+        # not from the Django Git Checkout
+        if compile_main_po and not os.path.join('conf', 'locale') in basedirs:
+            import django
+            django_dir = os.path.normpath(os.path.join(os.path.dirname(django.__file__)))
+            basedirs.update([os.path.join(django_dir, 'conf', 'locale')])
+
         if not basedirs:
             raise CommandError("This script should be run from the Django Git "
                                "checkout or your project or app tree, or with "
-                               "the settings module specified.")
+                               "the -m option, or with the settings module "
+                               "specified.")
 
         # Build locale list
         all_locales = []
