@@ -2,6 +2,7 @@ import codecs
 import concurrent.futures
 import glob
 import os
+from subprocess import DEVNULL, PIPE
 
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management.utils import (
@@ -33,6 +34,7 @@ class Command(BaseCommand):
 
     program = 'msgfmt'
     program_options = ['--check-format']
+    dry_run = False
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -58,6 +60,10 @@ class Command(BaseCommand):
             '--main-po', '-m', dest='main-po', action='store_true',
             help='Compile main .po file.'
         )
+        parser.add_argument(
+            '-n', '--dry-run', action='store_true', dest='dry_run',
+            help="Do everything except modify the filesystem.",
+        )
 
     def handle(self, **options):
         locale = options['locale']
@@ -65,12 +71,18 @@ class Command(BaseCommand):
         ignore_patterns = set(options['ignore_patterns'])
         compile_main_po = options['main-po']
         self.verbosity = options['verbosity']
+        self.dry_run = options['dry_run']
         if options['fuzzy']:
             self.program_options = self.program_options + ['-f']
 
         if find_command(self.program) is None:
             raise CommandError("Can't find %s. Make sure you have GNU gettext "
                                "tools 0.15 or newer installed." % self.program)
+
+        if self.dry_run:
+            self.stdout.write(
+                'You have activated the --dry-run option so no files will be modified.\n\n'
+            )
 
         basedirs = [os.path.join('conf', 'locale'), 'locale']
         if os.environ.get('DJANGO_SETTINGS_MODULE'):
@@ -155,10 +167,17 @@ class Command(BaseCommand):
                     self.has_errors = True
                     return
 
+                if not self.dry_run:
+                    output_file = base_path + '.mo'
+                    stdout_handler = PIPE
+                else:
+                    output_file = '-'
+                    stdout_handler = DEVNULL
+
                 args = [self.program] + self.program_options + [
-                    '-o', base_path + '.mo', base_path + '.po'
+                    '-o', output_file, base_path + '.po',
                 ]
-                futures.append(executor.submit(popen_wrapper, args))
+                futures.append(executor.submit(popen_wrapper, args, stdout=stdout_handler))
 
             for future in concurrent.futures.as_completed(futures):
                 output, errors, status = future.result()

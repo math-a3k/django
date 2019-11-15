@@ -10,19 +10,20 @@ from django.utils.encoding import DEFAULT_LOCALE_ENCODING
 from .base import CommandError, CommandParser
 
 
-def popen_wrapper(args, stdout_encoding='utf-8'):
+def popen_wrapper(args, stdout_encoding='utf-8', stdout=PIPE, stderr=PIPE):
     """
     Friendly wrapper around Popen.
 
-    Return stdout output, stderr output, and OS status code.
+    Return stdout output (if any), stderr output (if any), and OS status code.
     """
     try:
-        p = run(args, stdout=PIPE, stderr=PIPE, close_fds=os.name != 'nt')
+        p = run(args, stdout=stdout, stderr=stderr, close_fds=os.name != 'nt')
     except OSError as err:
         raise CommandError('Error executing %s' % args[0]) from err
     return (
-        p.stdout.decode(stdout_encoding),
-        p.stderr.decode(DEFAULT_LOCALE_ENCODING, errors='replace'),
+        p.stdout.decode(stdout_encoding) if p.stdout else None,
+        p.stderr.decode(
+            DEFAULT_LOCALE_ENCODING, errors='replace') if p.stderr else None,
         p.returncode
     )
 
