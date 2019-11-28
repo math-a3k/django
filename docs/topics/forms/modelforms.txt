@@ -2,9 +2,6 @@
 Creating forms from models
 ==========================
 
-.. module:: django.forms.models
-   :synopsis: ModelForm and ModelFormset.
-
 .. currentmodule:: django.forms
 
 ``ModelForm``
@@ -67,7 +64,9 @@ Model field                         Form field
                                     ``True`` on the model field, otherwise not
                                     represented in the form.
 
-:class:`BooleanField`               :class:`~django.forms.BooleanField`
+:class:`BooleanField`               :class:`~django.forms.BooleanField`, or
+                                    :class:`~django.forms.NullBooleanField` if
+                                    ``null=True``.
 
 :class:`CharField`                  :class:`~django.forms.CharField` with
                                     ``max_length`` set to the model field's
@@ -81,6 +80,8 @@ Model field                         Form field
 
 :class:`DecimalField`               :class:`~django.forms.DecimalField`
 
+:class:`DurationField`              :class:`~django.forms.DurationField`
+
 :class:`EmailField`                 :class:`~django.forms.EmailField`
 
 :class:`FileField`                  :class:`~django.forms.FileField`
@@ -92,7 +93,7 @@ Model field                         Form field
 :class:`ForeignKey`                 :class:`~django.forms.ModelChoiceField`
                                     (see below)
 
-``ImageField``                      :class:`~django.forms.ImageField`
+:class:`ImageField`                 :class:`~django.forms.ImageField`
 
 :class:`IntegerField`               :class:`~django.forms.IntegerField`
 
@@ -105,11 +106,15 @@ Model field                         Form field
 
 :class:`NullBooleanField`           :class:`~django.forms.NullBooleanField`
 
+:class:`PositiveBigIntegerField`    :class:`~django.forms.IntegerField`
+
 :class:`PositiveIntegerField`       :class:`~django.forms.IntegerField`
 
 :class:`PositiveSmallIntegerField`  :class:`~django.forms.IntegerField`
 
 :class:`SlugField`                  :class:`~django.forms.SlugField`
+
+:class:`SmallAutoField`             Not represented in the form
 
 :class:`SmallIntegerField`          :class:`~django.forms.IntegerField`
 
@@ -119,6 +124,8 @@ Model field                         Form field
 :class:`TimeField`                  :class:`~django.forms.TimeField`
 
 :class:`URLField`                   :class:`~django.forms.URLField`
+
+:class:`UUIDField`                  :class:`~django.forms.UUIDField`
 =================================== ==================================================
 
 .. currentmodule:: django.forms
@@ -163,11 +170,11 @@ Consider this set of models::
     from django.db import models
     from django.forms import ModelForm
 
-    TITLE_CHOICES = (
+    TITLE_CHOICES = [
         ('MR', 'Mr.'),
         ('MRS', 'Mrs.'),
         ('MS', 'Ms.'),
-    )
+    ]
 
     class Author(models.Model):
         name = models.CharField(max_length=100)
@@ -293,8 +300,8 @@ You can override the error messages from ``NON_FIELD_ERRORS`` raised by model
 validation by adding the :data:`~django.core.exceptions.NON_FIELD_ERRORS` key
 to the ``error_messages`` dictionary of the ``ModelForm``’s inner ``Meta`` class::
 
-    from django.forms import ModelForm
     from django.core.exceptions import NON_FIELD_ERRORS
+    from django.forms import ModelForm
 
     class ArticleForm(ModelForm):
         class Meta:
@@ -388,9 +395,8 @@ you've manually saved the instance produced by the form, you can invoke
     >>> f.save_m2m()
 
 Calling ``save_m2m()`` is only required if you use ``save(commit=False)``.
-When you use a simple ``save()`` on a form, all data -- including
-many-to-many data -- is saved without the need for any additional method calls.
-For example:
+When you use a ``save()`` on a form, all data -- including many-to-many data --
+is saved without the need for any additional method calls.  For example:
 
 .. code-block:: python
 
@@ -520,7 +526,9 @@ For example, if you want the ``CharField`` for the ``name`` attribute of
             }
 
 The ``widgets`` dictionary accepts either widget instances (e.g.,
-``Textarea(...)``) or classes (e.g., ``Textarea``).
+``Textarea(...)``) or classes (e.g., ``Textarea``). Note that the ``widgets``
+dictionary is ignored for a model field with a non-empty ``choices`` attribute.
+In this case, you must override the form field to use a different widget.
 
 Similarly, you can specify the ``labels``, ``help_texts`` and ``error_messages``
 attributes of the inner ``Meta`` class if you want to further customize a field.
@@ -571,7 +579,7 @@ fields like you would in a regular ``Form``.
 If you want to specify a field's validators, you can do so by defining
 the field declaratively and setting its ``validators`` parameter::
 
-    from django.forms import ModelForm, CharField
+    from django.forms import CharField, ModelForm
     from myapp.models import Article
 
     class ArticleForm(ModelForm):
@@ -728,8 +736,8 @@ to make::
     >>> from myapp.models import Book
     >>> BookForm = modelform_factory(Book, fields=("author", "title"))
 
-This can also be used to make simple modifications to existing forms, for
-example by specifying the widgets to be used for a given field::
+This can also be used to make modifications to existing forms, for example by
+specifying the widgets to be used for a given field::
 
     >>> from django.forms import Textarea
     >>> Form = modelform_factory(Book, form=BookForm,
@@ -752,8 +760,8 @@ Model formsets
 .. class:: models.BaseModelFormSet
 
 Like :doc:`regular formsets </topics/forms/formsets>`, Django provides a couple
-of enhanced formset classes that make it easy to work with Django models. Let's
-reuse the ``Author`` model from above::
+of enhanced formset classes to make working with Django models more
+convenient. Let's reuse the ``Author`` model from above::
 
     >>> from django.forms import modelformset_factory
     >>> from myapp.models import Author
@@ -783,8 +791,14 @@ with the ``Author`` model. It works just like a regular formset::
 
     :func:`~django.forms.models.modelformset_factory` uses
     :func:`~django.forms.formsets.formset_factory` to generate formsets. This
-    means that a model formset is just an extension of a basic formset that
-    knows how to interact with a particular model.
+    means that a model formset is an extension of a basic formset that knows
+    how to interact with a particular model.
+
+.. note::
+
+    When using :ref:`multi-table inheritance <multi-table-inheritance>`, forms
+    generated by a formset factory will contain a parent link field (by default
+    ``<parent_model_name>_ptr``) instead of an ``id`` field.
 
 Changing the queryset
 ---------------------
@@ -875,8 +889,10 @@ As with regular formsets, it's possible to :ref:`specify initial data
 parameter when instantiating the model formset class returned by
 :func:`~django.forms.models.modelformset_factory`. However, with model
 formsets, the initial values only apply to extra forms, those that aren't
-attached to an existing model instance. If the extra forms with initial data
-aren't changed by the user, they won't be validated or saved.
+attached to an existing model instance. If the length of ``initial`` exceeds
+the number of extra forms, the excess initial data is ignored. If the extra
+forms with initial data aren't changed by the user, they won't be validated or
+saved.
 
 .. _saving-objects-in-the-formset:
 
@@ -947,9 +963,8 @@ extra forms displayed.
 
 Also, ``extra=0`` doesn't prevent creation of new model instances as you can
 :ref:`add additional forms with JavaScript <understanding-the-managementform>`
-or just send additional POST data. Formsets `don't yet provide functionality
-<https://code.djangoproject.com/ticket/26142>`_ for an "edit only" view that
-prevents creation of new instances.
+or send additional POST data. Formsets :ticket:`don't yet provide functionality
+<26142>` for an "edit only" view that prevents creation of new instances.
 
 If the value of ``max_num`` is greater than the number of existing related
 objects, up to ``extra`` additional blank forms will be added to the formset,
@@ -1069,14 +1084,14 @@ There are three ways to render a formset in a Django template.
 
 First, you can let the formset do most of the work::
 
-    <form method="post" action="">
+    <form method="post">
         {{ formset }}
     </form>
 
 Second, you can manually render the formset, but let the form deal with
 itself::
 
-    <form method="post" action="">
+    <form method="post">
         {{ formset.management_form }}
         {% for form in formset %}
             {{ form }}
@@ -1089,7 +1104,7 @@ form as shown above. See the :ref:`management form documentation
 
 Third, you can manually render each field::
 
-    <form method="post" action="">
+    <form method="post">
         {{ formset.management_form }}
         {% for form in formset %}
             {% for field in form %}
@@ -1102,7 +1117,7 @@ If you opt to use this third method and you don't iterate over the fields with
 a ``{% for %}`` loop, you'll need to render the primary key field. For example,
 if you were rendering the ``name`` and ``age`` fields of a model::
 
-    <form method="post" action="">
+    <form method="post">
         {{ formset.management_form }}
         {% for form in formset %}
             {{ form.id }}

@@ -15,10 +15,11 @@ from django.utils.safestring import mark_safe
 from .base import (
     BLOCK_TAG_END, BLOCK_TAG_START, COMMENT_TAG_END, COMMENT_TAG_START,
     FILTER_SEPARATOR, SINGLE_BRACE_END, SINGLE_BRACE_START,
-    VARIABLE_ATTRIBUTE_SEPARATOR, VARIABLE_TAG_END, VARIABLE_TAG_START,
-    Context, Node, NodeList, TemplateSyntaxError, VariableDoesNotExist,
-    kwarg_re, render_value_in_context, token_kwargs,
+    VARIABLE_ATTRIBUTE_SEPARATOR, VARIABLE_TAG_END, VARIABLE_TAG_START, Node,
+    NodeList, TemplateSyntaxError, VariableDoesNotExist, kwarg_re,
+    render_value_in_context, token_kwargs,
 )
+from .context import Context
 from .defaultfilters import date
 from .library import Library
 from .smartif import IfParser, Literal
@@ -54,7 +55,7 @@ class CsrfTokenNode(Node):
             if csrf_token == 'NOTPROVIDED':
                 return format_html("")
             else:
-                return format_html("<input type='hidden' name='csrfmiddlewaretoken' value='{}'>", csrf_token)
+                return format_html('<input type="hidden" name="csrfmiddlewaretoken" value="{}">', csrf_token)
         else:
             # It's very probable that the token is missing because of
             # misconfiguration, so we raise a warning
@@ -399,15 +400,16 @@ class SpacelessNode(Node):
 
 
 class TemplateTagNode(Node):
-    mapping = {'openblock': BLOCK_TAG_START,
-               'closeblock': BLOCK_TAG_END,
-               'openvariable': VARIABLE_TAG_START,
-               'closevariable': VARIABLE_TAG_END,
-               'openbrace': SINGLE_BRACE_START,
-               'closebrace': SINGLE_BRACE_END,
-               'opencomment': COMMENT_TAG_START,
-               'closecomment': COMMENT_TAG_END,
-               }
+    mapping = {
+        'openblock': BLOCK_TAG_START,
+        'closeblock': BLOCK_TAG_END,
+        'openvariable': VARIABLE_TAG_START,
+        'closevariable': VARIABLE_TAG_END,
+        'openbrace': SINGLE_BRACE_START,
+        'closebrace': SINGLE_BRACE_END,
+        'opencomment': COMMENT_TAG_START,
+        'closecomment': COMMENT_TAG_END,
+    }
 
     def __init__(self, tagtype):
         self.tagtype = tagtype
@@ -483,9 +485,9 @@ class WidthRatioNode(Node):
             ratio = (value / max_value) * max_width
             result = str(round(ratio))
         except ZeroDivisionError:
-            return '0'
+            result = '0'
         except (ValueError, TypeError, OverflowError):
-            return ''
+            result = ''
 
         if self.asvar:
             context[self.asvar] = result
@@ -968,7 +970,7 @@ def do_if(parser, token):
 
     # {% endif %}
     if token.contents != 'endif':
-        raise TemplateSyntaxError('Malformed template tag at line {0}: "{1}"'.format(token.lineno, token.contents))
+        raise TemplateSyntaxError('Malformed template tag at line {}: "{}"'.format(token.lineno, token.contents))
 
     return IfNode(conditions_nodelists)
 
@@ -1131,7 +1133,7 @@ def now(parser, token):
     """
     Display the date, formatted according to the given string.
 
-    Use the same format as PHP's ``date()`` function; see http://php.net/date
+    Use the same format as PHP's ``date()`` function; see https://php.net/date
     for all the possible values.
 
     Sample usage::

@@ -367,8 +367,9 @@ For each field, we describe the default widget used if you don't specify
     * Default widget: :class:`TextInput`
     * Empty value: Whatever you've given as :attr:`empty_value`.
     * Normalizes to: A string.
-    * Validates ``max_length`` or ``min_length``, if they are provided.
-      Otherwise, all inputs are valid.
+    * Uses :class:`~django.core.validators.MaxLengthValidator` and
+      :class:`~django.core.validators.MinLengthValidator` if ``max_length`` and
+      ``min_length`` are provided. Otherwise, all inputs are valid.
     * Error message keys: ``required``, ``max_length``, ``min_length``
 
     Has three optional arguments for validation:
@@ -406,13 +407,13 @@ For each field, we describe the default widget used if you don't specify
 
     .. attribute:: choices
 
-        Either an iterable (e.g., a list or tuple) of 2-tuples to use as
-        choices for this field, or a callable that returns such an iterable.
-        This argument accepts the same formats as the ``choices`` argument to a
-        model field. See the :ref:`model field reference documentation on
-        choices <field-choices>` for more details. If the argument is a
-        callable, it is evaluated each time the field's form is initialized.
-        Defaults to an empty list.
+        Either an :term:`iterable` of 2-tuples to use as choices for this
+        field, or a callable that returns such an iterable. This argument
+        accepts the same formats as the ``choices`` argument to a model field.
+        See the :ref:`model field reference documentation on choices
+        <field-choices>` for more details. If the argument is a callable, it is
+        evaluated each time the field's form is initialized. Defaults to an
+        empty list.
 
 ``TypedChoiceField``
 --------------------
@@ -528,8 +529,10 @@ For each field, we describe the default widget used if you don't specify
       ``False``, else :class:`TextInput`.
     * Empty value: ``None``
     * Normalizes to: A Python ``decimal``.
-    * Validates that the given value is a decimal. Leading and trailing
-      whitespace is ignored.
+    * Validates that the given value is a decimal. Uses
+      :class:`~django.core.validators.MaxValueValidator` and
+      :class:`~django.core.validators.MinValueValidator` if  ``max_value`` and
+      ``min_value`` are provided. Leading and trailing whitespace is ignored.
     * Error message keys: ``required``, ``invalid``, ``max_value``,
       ``min_value``, ``max_digits``, ``max_decimal_places``,
       ``max_whole_digits``
@@ -581,8 +584,9 @@ For each field, we describe the default widget used if you don't specify
     * Default widget: :class:`EmailInput`
     * Empty value: ``''`` (an empty string)
     * Normalizes to: A string.
-    * Validates that the given value is a valid email address, using a
-      moderately complex regular expression.
+    * Uses :class:`~django.core.validators.EmailValidator` to validate that
+      the given value is a valid email address, using a moderately complex
+      regular expression.
     * Error message keys: ``required``, ``invalid``
 
     Has two optional arguments for validation, ``max_length`` and ``min_length``.
@@ -623,7 +627,7 @@ For each field, we describe the default widget used if you don't specify
 .. class:: FilePathField(**kwargs)
 
     * Default widget: :class:`Select`
-    * Empty value: ``None``
+    * Empty value: ``''`` (an empty string)
     * Normalizes to: A string.
     * Validates that the selected choice exists in the list of choices.
     * Error message keys: ``required``, ``invalid_choice``
@@ -669,8 +673,11 @@ For each field, we describe the default widget used if you don't specify
       ``False``, else :class:`TextInput`.
     * Empty value: ``None``
     * Normalizes to: A Python float.
-    * Validates that the given value is a float. Leading and trailing
-      whitespace is allowed, as in Python's ``float()`` function.
+    * Validates that the given value is a float. Uses
+      :class:`~django.core.validators.MaxValueValidator` and
+      :class:`~django.core.validators.MinValueValidator` if ``max_value`` and
+      ``min_value`` are provided. Leading and trailing whitespace is allowed,
+      as in Python's ``float()`` function.
     * Error message keys: ``required``, ``invalid``, ``max_value``,
       ``min_value``
 
@@ -686,8 +693,9 @@ For each field, we describe the default widget used if you don't specify
     * Empty value: ``None``
     * Normalizes to: An ``UploadedFile`` object that wraps the file content
       and file name into a single object.
-    * Validates that file data has been bound to the form, and that the
-      file is of an image format understood by Pillow.
+    * Validates that file data has been bound to the form. Also uses
+      :class:`~django.core.validators.FileExtensionValidator` to validate that
+      the file extension is supported by Pillow.
     * Error message keys: ``required``, ``invalid``, ``missing``, ``empty``,
       ``invalid_image``
 
@@ -702,9 +710,41 @@ For each field, we describe the default widget used if you don't specify
 
     After the field has been cleaned and validated, the ``UploadedFile``
     object will have an additional ``image`` attribute containing the Pillow
-    `Image`_ instance used to check if the file was a valid image. Also,
-    ``UploadedFile.content_type`` will be updated with the image's content type
-    if Pillow can determine it, otherwise it will be set to ``None``.
+    `Image`_ instance used to check if the file was a valid image. Pillow
+    closes the underlying file descriptor after verifying an image, so whilst
+    non-image data attributes, such as ``format``, ``height``, and ``width``,
+    are available, methods that access the underlying image data, such as
+    ``getdata()`` or ``getpixel()``, cannot be used without reopening the file.
+    For example::
+
+        >>> from PIL import Image
+        >>> from django import forms
+        >>> from django.core.files.uploadedfile import SimpleUploadedFile
+        >>> class ImageForm(forms.Form):
+        ...     img = forms.ImageField()
+        >>> file_data = {'img': SimpleUploadedFile('test.png', <file data>)}
+        >>> form = ImageForm({}, file_data)
+        # Pillow closes the underlying file descriptor.
+        >>> form.is_valid()
+        True
+        >>> image_field = form.cleaned_data['img']
+        >>> image_field.image
+        <PIL.PngImagePlugin.PngImageFile image mode=RGBA size=191x287 at 0x7F5985045C18>
+        >>> image_field.image.width
+        191
+        >>> image_field.image.height
+        287
+        >>> image_field.image.format
+        'PNG'
+        >>> image_field.image.getdata()
+        # Raises AttributeError: 'NoneType' object has no attribute 'seek'.
+        >>> image = Image.open(image_field)
+        >>> image.getdata()
+        <ImagingCore object at 0x7f5984f874b0>
+
+    Additionally, ``UploadedFile.content_type`` will be updated with the
+    image's content type if Pillow can determine it, otherwise it will be set
+    to ``None``.
 
 .. _Pillow: https://pillow.readthedocs.io/en/latest/
 .. _Image: https://pillow.readthedocs.io/en/latest/reference/Image.html
@@ -718,8 +758,11 @@ For each field, we describe the default widget used if you don't specify
       ``False``, else :class:`TextInput`.
     * Empty value: ``None``
     * Normalizes to: A Python integer.
-    * Validates that the given value is an integer. Leading and trailing
-      whitespace is allowed, as in Python's ``int()`` function.
+    * Validates that the given value is an integer. Uses
+      :class:`~django.core.validators.MaxValueValidator` and
+      :class:`~django.core.validators.MinValueValidator` if ``max_value`` and
+      ``min_value`` are provided. Leading and trailing whitespace is allowed,
+      as in Python's ``int()`` function.
     * Error message keys: ``required``, ``invalid``, ``max_value``,
       ``min_value``
 
@@ -824,8 +867,8 @@ For each field, we describe the default widget used if you don't specify
     * Default widget: :class:`TextInput`
     * Empty value: ``''`` (an empty string)
     * Normalizes to: A string.
-    * Validates that the given value matches against a certain regular
-      expression.
+    * Uses :class:`~django.core.validators.RegexValidator` to validate that
+      the given value matches a certain regular expression.
     * Error message keys: ``required``, ``invalid``
 
     Takes one required argument:
@@ -851,8 +894,9 @@ For each field, we describe the default widget used if you don't specify
    * Default widget: :class:`TextInput`
    * Empty value: ``''`` (an empty string)
    * Normalizes to: A string.
-   * Validates that the given value contains only letters, numbers,
-     underscores, and hyphens.
+   * Uses :class:`~django.core.validators.validate_slug` or
+     :class:`~django.core.validators.validate_unicode_slug` to validate that
+     the given value contains only letters, numbers, underscores, and hyphens.
    * Error messages: ``required``, ``invalid``
 
    This field is intended for use in representing a model
@@ -870,7 +914,7 @@ For each field, we describe the default widget used if you don't specify
 
 .. class:: TimeField(**kwargs)
 
-    * Default widget: :class:`TextInput`
+    * Default widget: :class:`TimeInput`
     * Empty value: ``None``
     * Normalizes to: A Python ``datetime.time`` object.
     * Validates that the given value is either a ``datetime.time`` or string
@@ -897,7 +941,8 @@ For each field, we describe the default widget used if you don't specify
     * Default widget: :class:`URLInput`
     * Empty value: ``''`` (an empty string)
     * Normalizes to: A string.
-    * Validates that the given value is a valid URL.
+    * Uses :class:`~django.core.validators.URLValidator` to validate that the
+      given value is a valid URL.
     * Error message keys: ``required``, ``invalid``
 
     Takes the following optional arguments:
@@ -1226,12 +1271,11 @@ method::
 Creating custom fields
 ======================
 
-If the built-in ``Field`` classes don't meet your needs, you can easily create
-custom ``Field`` classes. To do this, just create a subclass of
-``django.forms.Field``. Its only requirements are that it implement a
-``clean()`` method and that its ``__init__()`` method accept the core arguments
-mentioned above (``required``, ``label``, ``initial``, ``widget``,
-``help_text``).
+If the built-in ``Field`` classes don't meet your needs, you can create custom
+``Field`` classes. To do this, create a subclass of ``django.forms.Field``. Its
+only requirements are that it implement a ``clean()`` method and that its
+``__init__()`` method accept the core arguments mentioned above (``required``,
+``label``, ``initial``, ``widget``, ``help_text``).
 
 You can also customize how a field will be accessed by overriding
 :meth:`~django.forms.Field.get_bound_field()`.

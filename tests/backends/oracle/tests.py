@@ -24,9 +24,8 @@ class Tests(unittest.TestCase):
 
     def test_cursor_var(self):
         """Cursor variables can be passed as query parameters."""
-        from django.db.backends.oracle.base import Database
         with connection.cursor() as cursor:
-            var = cursor.var(Database.STRING)
+            var = cursor.var(str)
             cursor.execute("BEGIN %s := 'X'; END; ", [var])
             self.assertEqual(var.getvalue(), 'X')
 
@@ -50,14 +49,14 @@ class Tests(unittest.TestCase):
 
     def test_boolean_constraints(self):
         """Boolean fields have check constraints on their values."""
-        for field in (BooleanField(), NullBooleanField()):
+        for field in (BooleanField(), NullBooleanField(), BooleanField(null=True)):
             with self.subTest(field=field):
                 field.set_attributes_from_name('is_nice')
                 self.assertIn('"IS_NICE" IN (0,1)', field.db_check(connection))
 
 
 @unittest.skipUnless(connection.vendor == 'oracle', 'Oracle tests')
-class HiddenNoDataFoundExceptionTest(TransactionTestCase):
+class TransactionalTests(TransactionTestCase):
     available_apps = ['backends']
 
     def test_hidden_no_data_found_exception(self):
@@ -83,3 +82,16 @@ class HiddenNoDataFoundExceptionTest(TransactionTestCase):
         finally:
             with connection.cursor() as cursor:
                 cursor.execute('DROP TRIGGER "TRG_NO_DATA_FOUND"')
+
+    def test_password_with_at_sign(self):
+        old_password = connection.settings_dict['PASSWORD']
+        connection.settings_dict['PASSWORD'] = 'p@ssword'
+        try:
+            self.assertIn('/"p@ssword"@', connection._connect_string())
+            with self.assertRaises(DatabaseError) as context:
+                connection.cursor()
+            # Database exception: "ORA-01017: invalid username/password" is
+            # expected.
+            self.assertIn('ORA-01017', context.exception.args[0].message)
+        finally:
+            connection.settings_dict['PASSWORD'] = old_password

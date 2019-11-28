@@ -1,4 +1,5 @@
 import json
+import time
 
 from django.contrib import admin
 from django.contrib.admin.tests import AdminSeleniumTestCase
@@ -69,7 +70,7 @@ class AutocompleteJsonViewTests(AdminViewBasicTestCase):
         response = self.client.get(self.url, {'term': ''})
         self.assertEqual(response.status_code, 302)
 
-    def test_has_change_permission_required(self):
+    def test_has_view_or_change_permission_required(self):
         """
         Users require the change permission for the related model to the
         autocomplete view for it.
@@ -81,15 +82,17 @@ class AutocompleteJsonViewTests(AdminViewBasicTestCase):
         response = AutocompleteJsonView.as_view(**self.as_view_args)(request)
         self.assertEqual(response.status_code, 403)
         self.assertJSONEqual(response.content.decode('utf-8'), {'error': '403 Forbidden'})
-        # Add the change permission and retry.
-        p = Permission.objects.get(
-            content_type=ContentType.objects.get_for_model(Question),
-            codename='change_question',
-        )
-        self.user.user_permissions.add(p)
-        request.user = User.objects.get(pk=self.user.pk)
-        response = AutocompleteJsonView.as_view(**self.as_view_args)(request)
-        self.assertEqual(response.status_code, 200)
+        for permission in ('view', 'change'):
+            with self.subTest(permission=permission):
+                self.user.user_permissions.clear()
+                p = Permission.objects.get(
+                    content_type=ContentType.objects.get_for_model(Question),
+                    codename='%s_question' % permission,
+                )
+                self.user.user_permissions.add(p)
+                request.user = User.objects.get(pk=self.user.pk)
+                response = AutocompleteJsonView.as_view(**self.as_view_args)(request)
+                self.assertEqual(response.status_code, 200)
 
     def test_search_use_distinct(self):
         """
@@ -187,6 +190,13 @@ class SeleniumTests(AdminSeleniumTestCase):
         self.assertEqual(len(results), PAGINATOR_SIZE + 11)
         # Limit the results with the search field.
         search.send_keys('Who')
+        # Ajax request is delayed.
+        self.assertTrue(result_container.is_displayed())
+        results = result_container.find_elements_by_css_selector('.select2-results__option')
+        self.assertEqual(len(results), PAGINATOR_SIZE + 12)
+        # Wait for ajax delay.
+        time.sleep(0.25)
+        self.assertTrue(result_container.is_displayed())
         results = result_container.find_elements_by_css_selector('.select2-results__option')
         self.assertEqual(len(results), 1)
         # Select the result.
@@ -220,6 +230,13 @@ class SeleniumTests(AdminSeleniumTestCase):
         self.assertEqual(len(results), 31)
         # Limit the results with the search field.
         search.send_keys('Who')
+        # Ajax request is delayed.
+        self.assertTrue(result_container.is_displayed())
+        results = result_container.find_elements_by_css_selector('.select2-results__option')
+        self.assertEqual(len(results), 32)
+        # Wait for ajax delay.
+        time.sleep(0.25)
+        self.assertTrue(result_container.is_displayed())
         results = result_container.find_elements_by_css_selector('.select2-results__option')
         self.assertEqual(len(results), 1)
         # Select the result.

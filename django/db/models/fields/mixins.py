@@ -1,3 +1,5 @@
+from django.core import checks
+
 NOT_PROVIDED = object()
 
 
@@ -12,22 +14,6 @@ class FieldCacheMixin:
         try:
             return instance._state.fields_cache[cache_name]
         except KeyError:
-            # An ancestor link will exist if this field is defined on a
-            # multi-table inheritance parent of the instance's class.
-            ancestor_link = instance._meta.get_ancestor_link(self.model)
-            if ancestor_link:
-                try:
-                    # The value might be cached on an ancestor if the instance
-                    # originated from walking down the inheritance chain.
-                    ancestor = ancestor_link.get_cached_value(instance)
-                except KeyError:
-                    pass
-                else:
-                    value = self.get_cached_value(ancestor)
-                    # Cache the ancestor value locally to speed up future
-                    # lookups.
-                    self.set_cached_value(instance, value)
-                    return value
             if default is NOT_PROVIDED:
                 raise
             return default
@@ -40,3 +26,31 @@ class FieldCacheMixin:
 
     def delete_cached_value(self, instance):
         del instance._state.fields_cache[self.get_cache_name()]
+
+
+class CheckFieldDefaultMixin:
+    _default_hint = ('<valid default>', '<invalid default>')
+
+    def _check_default(self):
+        if self.has_default() and self.default is not None and not callable(self.default):
+            return [
+                checks.Warning(
+                    "%s default should be a callable instead of an instance "
+                    "so that it's not shared between all field instances." % (
+                        self.__class__.__name__,
+                    ),
+                    hint=(
+                        'Use a callable instead, e.g., use `%s` instead of '
+                        '`%s`.' % self._default_hint
+                    ),
+                    obj=self,
+                    id='fields.E010',
+                )
+            ]
+        else:
+            return []
+
+    def check(self, **kwargs):
+        errors = super().check(**kwargs)
+        errors.extend(self._check_default())
+        return errors

@@ -820,6 +820,32 @@ class CaseExpressionTests(TestCase):
             transform=attrgetter('integer', 'null_boolean')
         )
 
+    def test_update_null_boolean_old(self):
+        CaseTestModel.objects.update(
+            null_boolean_old=Case(
+                When(integer=1, then=True),
+                When(integer=2, then=False),
+            ),
+        )
+        self.assertQuerysetEqual(
+            CaseTestModel.objects.all().order_by('pk'),
+            [(1, True), (2, False), (3, None), (2, False), (3, None), (3, None), (4, None)],
+            transform=attrgetter('integer', 'null_boolean_old')
+        )
+
+    def test_update_positive_big_integer(self):
+        CaseTestModel.objects.update(
+            positive_big_integer=Case(
+                When(integer=1, then=1),
+                When(integer=2, then=2),
+            ),
+        )
+        self.assertQuerysetEqual(
+            CaseTestModel.objects.all().order_by('pk'),
+            [(1, 1), (2, 2), (3, None), (2, 2), (3, None), (3, None), (4, None)],
+            transform=attrgetter('integer', 'positive_big_integer')
+        )
+
     def test_update_positive_integer(self):
         CaseTestModel.objects.update(
             positive_integer=Case(
@@ -1288,6 +1314,24 @@ class CaseDocumentationExamples(TestCase):
             transform=attrgetter('name', 'account_type')
         )
 
+    def test_hash(self):
+        expression_1 = Case(
+            When(account_type__in=[Client.REGULAR, Client.GOLD], then=1),
+            default=2,
+            output_field=models.IntegerField(),
+        )
+        expression_2 = Case(
+            When(account_type__in=(Client.REGULAR, Client.GOLD), then=1),
+            default=2,
+            output_field=models.IntegerField(),
+        )
+        expression_3 = Case(When(account_type__in=[Client.REGULAR, Client.GOLD], then=1), default=2)
+        expression_4 = Case(When(account_type__in=[Client.PLATINUM, Client.GOLD], then=2), default=1)
+        self.assertEqual(hash(expression_1), hash(expression_2))
+        self.assertNotEqual(hash(expression_2), hash(expression_3))
+        self.assertNotEqual(hash(expression_1), hash(expression_4))
+        self.assertNotEqual(hash(expression_3), hash(expression_4))
+
 
 class CaseWhenTests(SimpleTestCase):
     def test_only_when_arguments(self):
@@ -1296,9 +1340,14 @@ class CaseWhenTests(SimpleTestCase):
             Case(When(Q(pk__in=[])), object())
 
     def test_invalid_when_constructor_args(self):
-        msg = '__init__() takes either a Q object or lookups as keyword arguments'
+        msg = (
+            'When() supports a Q object, a boolean expression, or lookups as '
+            'a condition.'
+        )
         with self.assertRaisesMessage(TypeError, msg):
             When(condition=object())
+        with self.assertRaisesMessage(TypeError, msg):
+            When(condition=Value(1, output_field=models.IntegerField()))
         with self.assertRaisesMessage(TypeError, msg):
             When()
 

@@ -284,11 +284,14 @@ tr.alt {
     background: #f6f6f6;
 }
 
-.row1 {
+.row1, .row-form-errors {
     background: #fff;
 }
 
-.row2 {
+.row2,
+.row2 .errorlist,
+.row1 + .row-form-errors,
+.row1 + .row-form-errors .errorlist {
     background: #f9f9f9;
 }
 
@@ -441,6 +444,8 @@ select {
 }
 
 select[multiple] {
+    /* Allow HTML size attribute to override the height in the rule above. */
+    height: auto;
     min-height: 150px;
 }
 
@@ -662,6 +667,11 @@ div.breadcrumbs a:focus, div.breadcrumbs a:hover {
 
 /* ACTION ICONS */
 
+.viewlink, .inlineviewlink {
+    padding-left: 16px;
+    background: url(../img/icon-viewlink.svg) 0 1px no-repeat;
+}
+
 .addlink {
     padding-left: 16px;
     background: url(../img/icon-addlink.svg) 0 1px no-repeat;
@@ -822,10 +832,12 @@ table#change-history tbody th {
 
 #header {
     width: auto;
-    height: 40px;
+    height: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     padding: 10px 40px;
     background: #417690;
-    line-height: 40px;
     color: #ffc;
     overflow: hidden;
 }

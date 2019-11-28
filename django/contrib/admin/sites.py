@@ -1,3 +1,4 @@
+import re
 from functools import update_wrapper
 from weakref import WeakSet
 
@@ -9,6 +10,8 @@ from django.db.models.base import ModelBase
 from django.http import Http404, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import NoReverseMatch, reverse
+from django.utils.functional import LazyObject
+from django.utils.module_loading import import_string
 from django.utils.text import capfirst
 from django.utils.translation import gettext as _, gettext_lazy
 from django.views.decorators.cache import never_cache
@@ -104,7 +107,14 @@ class AdminSite:
                 )
 
             if model in self._registry:
-                raise AlreadyRegistered('The model %s is already registered' % model.__name__)
+                registered_admin = str(self._registry[model])
+                msg = 'The model %s is already registered ' % model.__name__
+                if registered_admin.endswith('.ModelAdmin'):
+                    # Most likely registered without a ModelAdmin subclass.
+                    msg += 'in app %r.' % re.sub(r'\.ModelAdmin$', '', registered_admin)
+                else:
+                    msg += 'with %r.' % registered_admin
+                raise AlreadyRegistered(msg)
 
             # Ignore the registration if the model has been
             # swapped out.
@@ -298,6 +308,7 @@ class AdminSite:
             'site_url': site_url,
             'has_permission': self.has_permission(request),
             'available_apps': self.get_app_list(request),
+            'is_popup': False,
         }
 
     def password_change(self, request, extra_context=None):
@@ -429,8 +440,11 @@ class AdminSite:
                 'name': capfirst(model._meta.verbose_name_plural),
                 'object_name': model._meta.object_name,
                 'perms': perms,
+                'admin_url': None,
+                'add_url': None,
             }
-            if perms.get('change'):
+            if perms.get('change') or perms.get('view'):
+                model_dict['view_only'] = not perms.get('change')
                 try:
                     model_dict['admin_url'] = reverse('admin:%s_%s_changelist' % info, current_app=self.name)
                 except NoReverseMatch:
@@ -518,6 +532,14 @@ class AdminSite:
         ], context)
 
 
+class DefaultAdminSite(LazyObject):
+    def _setup(self):
+        AdminSiteClass = import_string(apps.get_app_config('admin').default_site)
+        self._wrapped = AdminSiteClass()
+
+
 # This global object represents the default admin site, for the common case.
-# You can instantiate AdminSite in your own code to create a custom admin site.
-site = AdminSite()
+# You can provide your own AdminSite using the (Simple)AdminConfig.default_site
+# attribute. You can also instantiate AdminSite in your own code to create a
+# custom admin site.
+site = DefaultAdminSite()
