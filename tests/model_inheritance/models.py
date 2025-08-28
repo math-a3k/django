@@ -11,6 +11,7 @@ Model inheritance exists in two varieties:
 
 Both styles are demonstrated here.
 """
+
 from django.db import models
 
 #
@@ -24,10 +25,10 @@ class CommonInfo(models.Model):
 
     class Meta:
         abstract = True
-        ordering = ['name']
+        ordering = ["name"]
 
     def __str__(self):
-        return '%s %s' % (self.__class__.__name__, self.name)
+        return "%s %s" % (self.__class__.__name__, self.name)
 
 
 class Worker(CommonInfo):
@@ -45,6 +46,7 @@ class Student(CommonInfo):
 # Abstract base classes with related models
 #
 
+
 class Post(models.Model):
     title = models.CharField(max_length=50)
 
@@ -53,16 +55,13 @@ class Attachment(models.Model):
     post = models.ForeignKey(
         Post,
         models.CASCADE,
-        related_name='attached_%(class)s_set',
-        related_query_name='attached_%(app_label)s_%(class)ss',
+        related_name="attached_%(class)s_set",
+        related_query_name="attached_%(app_label)s_%(class)ss",
     )
     content = models.TextField()
 
     class Meta:
         abstract = True
-
-    def __str__(self):
-        return self.content
 
 
 class Comment(Attachment):
@@ -77,19 +76,14 @@ class Link(Attachment):
 # Multi-table inheritance
 #
 
+
 class Chef(models.Model):
     name = models.CharField(max_length=50)
-
-    def __str__(self):
-        return "%s the chef" % self.name
 
 
 class Place(models.Model):
     name = models.CharField(max_length=50)
     address = models.CharField(max_length=80)
-
-    def __str__(self):
-        return "%s the place" % self.name
 
 
 class Rating(models.Model):
@@ -97,7 +91,7 @@ class Rating(models.Model):
 
     class Meta:
         abstract = True
-        ordering = ['-rating']
+        ordering = ["-rating"]
 
 
 class Restaurant(Place, Rating):
@@ -106,33 +100,33 @@ class Restaurant(Place, Rating):
     chef = models.ForeignKey(Chef, models.SET_NULL, null=True, blank=True)
 
     class Meta(Rating.Meta):
-        db_table = 'my_restaurant'
-
-    def __str__(self):
-        return "%s the restaurant" % self.name
+        db_table = "my_restaurant"
 
 
 class ItalianRestaurant(Restaurant):
     serves_gnocchi = models.BooleanField(default=False)
 
-    def __str__(self):
-        return "%s the italian restaurant" % self.name
+
+class ItalianRestaurantCommonParent(ItalianRestaurant, Place):
+    place_ptr_two = models.OneToOneField(
+        Place, on_delete=models.CASCADE, parent_link=True
+    )
 
 
 class Supplier(Place):
-    customers = models.ManyToManyField(Restaurant, related_name='provider')
+    customers = models.ManyToManyField(Restaurant, related_name="provider")
 
-    def __str__(self):
-        return "%s the supplier" % self.name
+
+class CustomSupplier(Supplier):
+    pass
 
 
 class ParkingLot(Place):
     # An explicit link to the parent (we can control the attribute name).
-    parent = models.OneToOneField(Place, models.CASCADE, primary_key=True, parent_link=True)
-    main_site = models.ForeignKey(Place, models.CASCADE, related_name='lot')
-
-    def __str__(self):
-        return "%s the parking lot" % self.name
+    parent = models.OneToOneField(
+        Place, models.CASCADE, primary_key=True, parent_link=True
+    )
+    main_site = models.ForeignKey(Place, models.CASCADE, related_name="lot")
 
 
 #
@@ -144,12 +138,15 @@ class ParkingLot(Place):
 #       here in order to have the name conflict between apps
 #
 
+
 class Title(models.Model):
     title = models.CharField(max_length=50)
 
 
 class NamedURL(models.Model):
-    title = models.ForeignKey(Title, models.CASCADE, related_name='attached_%(app_label)s_%(class)s_set')
+    title = models.ForeignKey(
+        Title, models.CASCADE, related_name="attached_%(app_label)s_%(class)s_set"
+    )
     url = models.URLField()
 
     class Meta:
@@ -178,10 +175,12 @@ class GrandParent(models.Model):
     first_name = models.CharField(max_length=80)
     last_name = models.CharField(max_length=80)
     email = models.EmailField(unique=True)
-    place = models.ForeignKey(Place, models.CASCADE, null=True, related_name='+')
+    place = models.ForeignKey(Place, models.CASCADE, null=True, related_name="+")
 
     class Meta:
-        unique_together = ('first_name', 'last_name')
+        # Ordering used by test_inherited_ordering_pk_desc.
+        ordering = ["-pk"]
+        unique_together = ("first_name", "last_name")
 
 
 class Parent(GrandParent):
@@ -193,4 +192,24 @@ class Child(Parent):
 
 
 class GrandChild(Child):
+    pass
+
+
+class CommonAncestor(models.Model):
+    id = models.IntegerField(primary_key=True, default=1)
+
+
+class FirstParent(CommonAncestor):
+    first_ancestor = models.OneToOneField(
+        CommonAncestor, models.CASCADE, primary_key=True, parent_link=True
+    )
+
+
+class SecondParent(CommonAncestor):
+    second_ancestor = models.OneToOneField(
+        CommonAncestor, models.CASCADE, primary_key=True, parent_link=True
+    )
+
+
+class CommonChild(FirstParent, SecondParent):
     pass

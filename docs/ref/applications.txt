@@ -9,10 +9,12 @@ and provides introspection. It also maintains a list of available :doc:`models
 </topics/db/models>`.
 
 This registry is called :attr:`~django.apps.apps` and it's available in
-:mod:`django.apps`::
+:mod:`django.apps`:
+
+.. code-block:: pycon
 
     >>> from django.apps import apps
-    >>> apps.get_app_config('admin').verbose_name
+    >>> apps.get_app_config("admin").verbose_name
     'Administration'
 
 Projects and applications
@@ -22,9 +24,9 @@ The term **project** describes a Django web application. The project Python
 package is defined primarily by a settings module, but it usually contains
 other things. For example, when you run  ``django-admin startproject mysite``
 you'll get a ``mysite`` project directory that contains a ``mysite`` Python
-package with ``settings.py``, ``urls.py``, and ``wsgi.py``. The project package
-is often extended to include things like fixtures, CSS, and templates which
-aren't tied to a particular application.
+package with ``settings.py``, ``urls.py``, ``asgi.py`` and ``wsgi.py``. The
+project package is often extended to include things like fixtures, CSS, and
+templates which aren't tied to a particular application.
 
 A **project's root directory** (the one that contains ``manage.py``) is usually
 the container for all of a project's applications which aren't installed
@@ -56,25 +58,28 @@ application and have models, etc. (which would require adding it to
 Configuring applications
 ========================
 
-To configure an application, subclass :class:`~django.apps.AppConfig` and put
-the dotted path to that subclass in :setting:`INSTALLED_APPS`.
+To configure an application, create an ``apps.py`` module inside the
+application, then define a subclass of :class:`AppConfig` there.
 
 When :setting:`INSTALLED_APPS` contains the dotted path to an application
-module, Django checks for a ``default_app_config`` variable in that module.
+module, by default, if Django finds exactly one :class:`AppConfig` subclass in
+the ``apps.py`` submodule, it uses that configuration for the application. This
+behavior may be disabled by setting :attr:`AppConfig.default` to ``False``.
 
-If it's defined, it's the dotted path to the :class:`~django.apps.AppConfig`
-subclass for that application.
+If the ``apps.py`` module contains more than one :class:`AppConfig` subclass,
+Django will look for a single one where :attr:`AppConfig.default` is ``True``.
 
-If there is no ``default_app_config``, Django uses the base
-:class:`~django.apps.AppConfig` class.
+If no :class:`AppConfig` subclass is found, the base :class:`AppConfig` class
+will be used.
 
-``default_app_config`` allows applications that predate Django 1.7 such as
-``django.contrib.admin`` to opt-in to :class:`~django.apps.AppConfig` features
-without requiring users to update their :setting:`INSTALLED_APPS`.
+Alternatively, :setting:`INSTALLED_APPS` may contain the dotted path to a
+configuration class to specify it explicitly::
 
-New applications should avoid ``default_app_config``. Instead they should
-require the dotted path to the appropriate :class:`~django.apps.AppConfig`
-subclass to be configured explicitly in :setting:`INSTALLED_APPS`.
+    INSTALLED_APPS = [
+        ...,
+        "polls.apps.PollsAppConfig",
+        ...,
+    ]
 
 For application authors
 -----------------------
@@ -86,37 +91,29 @@ would provide a proper name for the admin::
 
     from django.apps import AppConfig
 
+
     class RockNRollConfig(AppConfig):
-        name = 'rock_n_roll'
+        name = "rock_n_roll"
         verbose_name = "Rock ’n’ roll"
 
-You can make your application load this :class:`~django.apps.AppConfig`
-subclass by default as follows::
+``RockNRollConfig`` will be loaded automatically when :setting:`INSTALLED_APPS`
+contains ``'rock_n_roll'``. If you need to prevent this, set
+:attr:`~AppConfig.default` to ``False`` in the class definition.
 
-    # rock_n_roll/__init__.py
+You can provide several :class:`AppConfig` subclasses with different behaviors.
+To tell Django which one to use by default, set :attr:`~AppConfig.default` to
+``True`` in its definition. If your users want to pick a non-default
+configuration, they must replace ``'rock_n_roll'`` with the dotted path to that
+specific class in their :setting:`INSTALLED_APPS` setting.
 
-    default_app_config = 'rock_n_roll.apps.RockNRollConfig'
+The :attr:`AppConfig.name` attribute tells Django which application this
+configuration applies to. You can define any other attribute documented in the
+:class:`~django.apps.AppConfig` API reference.
 
-That will cause ``RockNRollConfig`` to be used when :setting:`INSTALLED_APPS`
-contains ``'rock_n_roll'``. This allows you to make use of
-:class:`~django.apps.AppConfig` features without requiring your users to update
-their :setting:`INSTALLED_APPS` setting. Besides this use case, it's best to
-avoid using ``default_app_config`` and instead specify the app config class in
-:setting:`INSTALLED_APPS` as described next.
-
-Of course, you can also tell your users to put
-``'rock_n_roll.apps.RockNRollConfig'`` in their :setting:`INSTALLED_APPS`
-setting. You can even provide several different
-:class:`~django.apps.AppConfig` subclasses with different behaviors and allow
-your users to choose one via their :setting:`INSTALLED_APPS` setting.
-
-The recommended convention is to put the configuration class in a submodule of
-the application called ``apps``. However, this isn't enforced by Django.
-
-You must include the :attr:`~django.apps.AppConfig.name` attribute for Django
-to determine which application this configuration applies to. You can define
-any attributes documented in the :class:`~django.apps.AppConfig` API
-reference.
+:class:`AppConfig` subclasses may be defined anywhere. The ``apps.py``
+convention merely allows Django to load them automatically when
+:setting:`INSTALLED_APPS` contains the path to an application module rather
+than the path to a configuration class.
 
 .. note::
 
@@ -138,18 +135,25 @@ configuration::
 
     from rock_n_roll.apps import RockNRollConfig
 
+
     class JazzManoucheConfig(RockNRollConfig):
         verbose_name = "Jazz Manouche"
+
 
     # anthology/settings.py
 
     INSTALLED_APPS = [
-        'anthology.apps.JazzManoucheConfig',
+        "anthology.apps.JazzManoucheConfig",
         # ...
     ]
 
-Again, defining project-specific configuration classes in a submodule called
-``apps`` is a convention, not a requirement.
+This example shows project-specific configuration classes located in a
+submodule called ``apps.py``. This is a convention, not a requirement.
+:class:`AppConfig` subclasses may be defined anywhere.
+
+In this situation, :setting:`INSTALLED_APPS` must contain the dotted path to
+the configuration class because it lives outside of an application and thus
+cannot be automatically detected.
 
 Application configuration
 =========================
@@ -182,6 +186,14 @@ Configurable attributes
 
     It must be unique across a Django project.
 
+    .. warning::
+
+        Changing this attribute after migrations have been applied for an
+        application will result in breaking changes to a project or, in the
+        case of a reusable app, any existing installs of that app. This is
+        because ``AppConfig.label`` is used in database tables and migration
+        files when referencing an app in the dependencies list.
+
 .. attribute:: AppConfig.verbose_name
 
     Human-readable name for the application, e.g. "Administration".
@@ -198,6 +210,28 @@ Configurable attributes
     :class:`~django.apps.AppConfig` subclass. In a few situations this is
     required; for instance if the app package is a `namespace package`_ with
     multiple paths.
+
+.. attribute:: AppConfig.default
+
+    Set this attribute to ``False`` to prevent Django from selecting a
+    configuration class automatically. This is useful when ``apps.py`` defines
+    only one :class:`AppConfig` subclass but you don't want Django to use it by
+    default.
+
+    Set this attribute to ``True`` to tell Django to select a configuration
+    class automatically. This is useful when ``apps.py`` defines more than one
+    :class:`AppConfig` subclass and you want Django to use one of them by
+    default.
+
+    By default, this attribute isn't set.
+
+.. attribute:: AppConfig.default_auto_field
+
+    The implicit primary key type to add to models within this app. You can
+    use this to keep :class:`~django.db.models.AutoField` as the primary key
+    type for third party applications.
+
+    By default, this is the value of :setting:`DEFAULT_AUTO_FIELD`.
 
 Read-only attributes
 --------------------
@@ -221,7 +255,7 @@ Read-only attributes
 Methods
 -------
 
-.. method:: AppConfig.get_models()
+.. method:: AppConfig.get_models(include_auto_created=False, include_swapped=False)
 
     Returns an iterable of :class:`~django.db.models.Model` classes for this
     application.
@@ -237,7 +271,7 @@ Methods
 
     Requires the app registry to be fully populated unless the
     ``require_ready`` argument is set to ``False``. ``require_ready`` behaves
-    exactly as in :meth:`apps.get_model()`.
+    exactly as in :meth:`apps.get_model`.
 
 .. method:: AppConfig.ready()
 
@@ -256,37 +290,43 @@ Methods
 
     Example::
 
+        from django.apps import AppConfig
         from django.db.models.signals import pre_save
 
-        def ready(self):
-            # importing model classes
-            from .models import MyModel  # or...
-            MyModel = self.get_model('MyModel')
 
-            # registering signals with the model's string label
-            pre_save.connect(receiver, sender='app_label.MyModel')
+        class RockNRollConfig(AppConfig):
+            # ...
+
+            def ready(self):
+                # importing model classes
+                from .models import MyModel  # or...
+
+                MyModel = self.get_model("MyModel")
+
+                # registering signals with the model's string label
+                pre_save.connect(receiver, sender="app_label.MyModel")
 
     .. warning::
 
         Although you can access model classes as described above, avoid
-        interacting with the database in your :meth:`ready()` implementation.
+        interacting with the database in your :meth:`ready` implementation.
         This includes model methods that execute queries
-        (:meth:`~django.db.models.Model.save()`,
-        :meth:`~django.db.models.Model.delete()`, manager methods etc.), and
+        (:meth:`~django.db.models.Model.save`,
+        :meth:`~django.db.models.Model.delete`, manager methods etc.), and
         also raw SQL queries via ``django.db.connection``. Your
-        :meth:`ready()` method will run during startup of every management
+        :meth:`ready` method will run during startup of every management
         command. For example, even though the test database configuration is
         separate from the production settings, ``manage.py test`` would still
         execute some queries against your **production** database!
 
     .. note::
 
-        In the usual initialization process, the ``ready`` method is only called
-        once by Django. But in some corner cases, particularly in tests which
-        are fiddling with installed applications, ``ready`` might be called more
-        than once. In that case, either write idempotent methods, or put a flag
-        on your ``AppConfig`` classes to prevent re-running code which should
-        be executed exactly one time.
+        In the usual initialization process, the ``ready`` method is only
+        called once by Django. But in some corner cases, particularly in tests
+        which are fiddling with installed applications, ``ready`` might be
+        called more than once. In that case, either write idempotent methods,
+        or put a flag on your ``AppConfig`` classes to prevent rerunning code
+        which should be executed exactly one time.
 
 .. _namespace package:
 
@@ -376,7 +416,7 @@ Initialization process
 How applications are loaded
 ---------------------------
 
-When Django starts, :func:`django.setup()` is responsible for populating the
+When Django starts, :func:`django.setup` is responsible for populating the
 application registry.
 
 .. currentmodule:: django
@@ -393,7 +433,7 @@ application registry.
 
     This function is called automatically:
 
-    * When running an HTTP server via Django's WSGI support.
+    * When running an HTTP server via Django's ASGI or WSGI support.
     * When invoking a management command.
 
     It must be called explicitly in other cases, for instance in plain Python
@@ -408,7 +448,8 @@ processes all applications in the order of :setting:`INSTALLED_APPS`.
 
    If it's an application configuration class, Django imports the root package
    of the application, defined by its :attr:`~AppConfig.name` attribute. If
-   it's a Python package, Django creates a default application configuration.
+   it's a Python package, Django looks for an application configuration in an
+   ``apps.py`` submodule, or else creates a default application configuration.
 
    *At this stage, your code shouldn't import any models!*
 
@@ -422,7 +463,7 @@ processes all applications in the order of :setting:`INSTALLED_APPS`.
    import any models at this stage.
 
    Once this stage completes, APIs that operate on application configurations
-   such as :meth:`~apps.get_app_config()` become usable.
+   such as :meth:`~apps.get_app_config` become usable.
 
 #. Then Django attempts to import the ``models`` submodule of each application,
    if there is one.
@@ -432,9 +473,9 @@ processes all applications in the order of :setting:`INSTALLED_APPS`.
    populated at this point, which could cause the ORM to malfunction.
 
    Once this stage completes, APIs that operate on models such as
-   :meth:`~apps.get_model()` become usable.
+   :meth:`~apps.get_model` become usable.
 
-#. Finally Django runs the :meth:`~AppConfig.ready()` method of each application
+#. Finally Django runs the :meth:`~AppConfig.ready` method of each application
    configuration.
 
 .. _applications-troubleshooting:
@@ -448,10 +489,10 @@ Here are some common problems that you may encounter during initialization:
   importing an application configuration or a models module triggers code that
   depends on the app registry.
 
-  For example, :func:`~django.utils.translation.gettext()` uses the app
+  For example, :func:`~django.utils.translation.gettext` uses the app
   registry to look up translation catalogs in applications. To translate at
-  import time, you need :func:`~django.utils.translation.gettext_lazy()`
-  instead. (Using :func:`~django.utils.translation.gettext()` would be a bug,
+  import time, you need :func:`~django.utils.translation.gettext_lazy`
+  instead. (Using :func:`~django.utils.translation.gettext` would be a bug,
   because the translation would happen at import time, rather than at each
   request depending on the active language.)
 
@@ -459,7 +500,7 @@ Here are some common problems that you may encounter during initialization:
   will also trigger this exception. The ORM cannot function properly until all
   models are available.
 
-  This exception also happens if you forget to call :func:`django.setup()` in
+  This exception also happens if you forget to call :func:`django.setup` in
   a standalone Python script.
 
 * ``ImportError: cannot import name ...`` This happens if the import sequence
@@ -476,3 +517,29 @@ Here are some common problems that you may encounter during initialization:
   :setting:`INSTALLED_APPS` to contain
   ``'django.contrib.admin.apps.SimpleAdminConfig'`` instead of
   ``'django.contrib.admin'``.
+
+* ``RuntimeWarning: Accessing the database during app initialization is
+  discouraged.`` This warning is triggered for database queries executed before
+  apps are ready, such as during module imports or in the
+  :meth:`AppConfig.ready` method. Such premature database queries are
+  discouraged because they will run during the startup of every management
+  command, which will slow down your project startup, potentially cache stale
+  data, and can even fail if migrations are pending.
+
+  For example, a common mistake is making a database query to populate form
+  field choices::
+
+    class LocationForm(forms.Form):
+        country = forms.ChoiceField(choices=[c.name for c in Country.objects.all()])
+
+  In the example above, the query from ``Country.objects.all()`` is executed
+  during module import, because the ``QuerySet`` is iterated over. To avoid the
+  warning, the form could use a :class:`~django.forms.ModelChoiceField`
+  instead::
+
+    class LocationForm(forms.Form):
+        country = forms.ModelChoiceField(queryset=Country.objects.all())
+
+  To make it easier to find the code that triggered this warning, you can make
+  Python :ref:`treat warnings as errors <python:warning-filter>` to reveal the
+  stack trace, for example with ``python -Werror manage.py shell``.

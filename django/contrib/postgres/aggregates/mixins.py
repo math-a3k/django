@@ -1,57 +1,36 @@
-from django.db.models.expressions import F, OrderBy
+# RemovedInDjango70Warning: When the deprecation ends, remove completely.
+import warnings
+
+from django.utils.deprecation import RemovedInDjango61Warning, RemovedInDjango70Warning
 
 
-class OrderableAggMixin:
+# RemovedInDjango61Warning.
+class _DeprecatedOrdering:
+    def __init__(self, *expressions, ordering=(), order_by=(), **extra):
+        if ordering:
+            warnings.warn(
+                "The ordering argument is deprecated. Use order_by instead.",
+                category=RemovedInDjango61Warning,
+                stacklevel=2,
+            )
+            if order_by:
+                raise TypeError("Cannot specify both order_by and ordering.")
+            order_by = ordering
 
-    def __init__(self, expression, ordering=(), **extra):
-        if not isinstance(ordering, (list, tuple)):
-            ordering = [ordering]
-        ordering = ordering or []
-        # Transform minus sign prefixed strings into an OrderBy() expression.
-        ordering = (
-            (OrderBy(F(o[1:]), descending=True) if isinstance(o, str) and o[0] == '-' else o)
-            for o in ordering
+        super().__init__(*expressions, order_by=order_by, **extra)
+
+
+# RemovedInDjango70Warning.
+# RemovedInDjango61Warning: When the deprecation ends, replace with:
+# class OrderableAggMixin:
+class OrderableAggMixin(_DeprecatedOrdering):
+    allow_order_by = True
+
+    def __init_subclass__(cls, /, *args, **kwargs):
+        warnings.warn(
+            "OrderableAggMixin is deprecated. Use Aggregate and allow_order_by "
+            "instead.",
+            category=RemovedInDjango70Warning,
+            stacklevel=1,
         )
-        super().__init__(expression, **extra)
-        self.ordering = self._parse_expressions(*ordering)
-
-    def resolve_expression(self, *args, **kwargs):
-        self.ordering = [expr.resolve_expression(*args, **kwargs) for expr in self.ordering]
-        return super().resolve_expression(*args, **kwargs)
-
-    def as_sql(self, compiler, connection):
-        if self.ordering:
-            ordering_params = []
-            ordering_expr_sql = []
-            for expr in self.ordering:
-                expr_sql, expr_params = expr.as_sql(compiler, connection)
-                ordering_expr_sql.append(expr_sql)
-                ordering_params.extend(expr_params)
-            sql, sql_params = super().as_sql(compiler, connection, ordering=(
-                'ORDER BY ' + ', '.join(ordering_expr_sql)
-            ))
-            return sql, sql_params + ordering_params
-        return super().as_sql(compiler, connection, ordering='')
-
-    def set_source_expressions(self, exprs):
-        # Extract the ordering expressions because ORDER BY clause is handled
-        # in a custom way.
-        self.ordering = exprs[self._get_ordering_expressions_index():]
-        return super().set_source_expressions(exprs[:self._get_ordering_expressions_index()])
-
-    def get_source_expressions(self):
-        return self.source_expressions + self.ordering
-
-    def get_source_fields(self):
-        # Filter out fields contributed by the ordering expressions as
-        # these should not be used to determine which the return type of the
-        # expression.
-        return [
-            e._output_field_or_none
-            for e in self.get_source_expressions()[:self._get_ordering_expressions_index()]
-        ]
-
-    def _get_ordering_expressions_index(self):
-        """Return the index at which the ordering expressions start."""
-        source_expressions = self.get_source_expressions()
-        return len(source_expressions) - len(self.ordering)
+        super().__init_subclass__(*args, **kwargs)

@@ -21,8 +21,8 @@
 {# as it causes problems in compiled CHM files.                  #}
 {% if builder != "htmlhelp" %}
 {{ super() }}
-<script type="text/javascript" src="{{ pathto('templatebuiltins.js', 1) }}"></script>
-<script type="text/javascript">
+<script src="{{ pathto('templatebuiltins.js', 1) }}"></script>
+<script>
 (function($) {
     if (!django_template_builtins) {
        // templatebuiltins.js missing, do nothing.
@@ -72,7 +72,7 @@
 </script>
 {% endif %}
 {%- if include_console_assets -%}
-<link rel="stylesheet" href="{{ pathto('_static/console-tabs.css', 1) }}" type="text/css" />
+<link rel="stylesheet" href="{{ pathto('_static/console-tabs.css', 1) }}">
 {%- endif -%}
 {% endblock %}
 

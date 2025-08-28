@@ -1,48 +1,44 @@
 /* global ol */
-
-var GeometryTypeControl = function(opt_options) {
-    'use strict';
+'use strict';
+class GeometryTypeControl extends ol.control.Control {
     // Map control to switch type when geometry type is unknown
-    var options = opt_options || {};
+    constructor(opt_options) {
+        const options = opt_options || {};
 
-    var element = document.createElement('div');
-    element.className = 'switch-type type-' + options.type + ' ol-control ol-unselectable';
-    if (options.active) {
-        element.className += " type-active";
-    }
-
-    var self = this;
-    var switchType = function(e) {
-        e.preventDefault();
-        if (options.widget.currentGeometryType !== self) {
-            options.widget.map.removeInteraction(options.widget.interactions.draw);
-            options.widget.interactions.draw = new ol.interaction.Draw({
-                features: options.widget.featureCollection,
-                type: options.type
-            });
-            options.widget.map.addInteraction(options.widget.interactions.draw);
-            var className = options.widget.currentGeometryType.element.className.replace(/ type-active/g, '');
-            options.widget.currentGeometryType.element.className = className;
-            options.widget.currentGeometryType = self;
-            element.className += " type-active";
+        const element = document.createElement('div');
+        element.className = 'switch-type type-' + options.type + ' ol-control ol-unselectable';
+        if (options.active) {
+            element.classList.add("type-active");
         }
-    };
 
-    element.addEventListener('click', switchType, false);
-    element.addEventListener('touchstart', switchType, false);
+        super({
+            element: element,
+            target: options.target
+        });
+        const self = this;
+        const switchType = function(e) {
+            e.preventDefault();
+            if (options.widget.currentGeometryType !== self) {
+                options.widget.map.removeInteraction(options.widget.interactions.draw);
+                options.widget.interactions.draw = new ol.interaction.Draw({
+                    features: options.widget.featureCollection,
+                    type: options.type
+                });
+                options.widget.map.addInteraction(options.widget.interactions.draw);
+                options.widget.currentGeometryType.element.classList.remove('type-active');
+                options.widget.currentGeometryType = self;
+                element.classList.add("type-active");
+            }
+        };
 
-    ol.control.Control.call(this, {
-        element: element
-    });
-};
-ol.inherits(GeometryTypeControl, ol.control.Control);
+        element.addEventListener('click', switchType, false);
+        element.addEventListener('touchstart', switchType, false);
+    }
+}
 
 // TODO: allow deleting individual features (#8972)
-(function() {
-    'use strict';
-    var jsonFormat = new ol.format.GeoJSON();
-
-    function MapWidget(options) {
+class MapWidget {
+    constructor(options) {
         this.map = null;
         this.interactions = {draw: null, modify: null};
         this.typeChoices = false;
@@ -53,17 +49,25 @@ ol.inherits(GeometryTypeControl, ol.control.Control);
             default_lat: 0,
             default_lon: 0,
             default_zoom: 12,
-            is_collection: options.geom_name.indexOf('Multi') > -1 || options.geom_name.indexOf('Collection') > -1
+            is_collection: options.geom_name.includes('Multi') || options.geom_name.includes('Collection')
         };
 
         // Altering using user-provided options
-        for (var property in options) {
-            if (options.hasOwnProperty(property)) {
+        for (const property in options) {
+            if (Object.hasOwn(options, property)) {
                 this.options[property] = options[property];
             }
         }
-        if (!options.base_layer) {
-            this.options.base_layer = new ol.layer.Tile({source: new ol.source.OSM()});
+
+        // Options' base_layer can be empty, or contain a layerBuilder key, or
+        // be a layer already constructed.
+        const base_layer = options.base_layer;
+        if (typeof base_layer === 'string' && base_layer in MapWidget.layerBuilder) {
+            this.baseLayer = MapWidget.layerBuilder[base_layer]();
+        } else if (base_layer && typeof base_layer !== 'string') {
+            this.baseLayer = base_layer;
+        } else {
+            this.baseLayer = MapWidget.layerBuilder.osm();
         }
 
         this.map = this.createMap();
@@ -79,9 +83,9 @@ ol.inherits(GeometryTypeControl, ol.control.Control);
         });
 
         // Populate and set handlers for the feature container
-        var self = this;
+        const self = this;
         this.featureCollection.on('add', function(event) {
-            var feature = event.element;
+            const feature = event.element;
             feature.on('change', function() {
                 self.serializeFeatures();
             });
@@ -93,16 +97,17 @@ ol.inherits(GeometryTypeControl, ol.control.Control);
             }
         });
 
-        var initial_value = document.getElementById(this.options.id).value;
+        const initial_value = document.getElementById(this.options.id).value;
         if (initial_value) {
-            var features = jsonFormat.readFeatures('{"type": "Feature", "geometry": ' + initial_value + '}');
-            var extent = ol.extent.createEmpty();
+            const jsonFormat = new ol.format.GeoJSON();
+            const features = jsonFormat.readFeatures('{"type": "Feature", "geometry": ' + initial_value + '}');
+            const extent = ol.extent.createEmpty();
             features.forEach(function(feature) {
                 this.featureOverlay.getSource().addFeature(feature);
                 ol.extent.extend(extent, feature.getGeometry().getExtent());
             }, this);
             // Center/zoom the map
-            this.map.getView().fit(extent, {maxZoom: this.options.default_zoom});
+            this.map.getView().fit(extent, {minResolution: 1});
         } else {
             this.map.getView().setCenter(this.defaultCenter());
         }
@@ -110,21 +115,27 @@ ol.inherits(GeometryTypeControl, ol.control.Control);
         if (initial_value && !this.options.is_collection) {
             this.disableDrawing();
         }
+        const clearNode = document.getElementById(this.map.getTarget()).nextElementSibling;
+        if (clearNode.classList.contains('clear_features')) {
+            clearNode.querySelector('a').addEventListener('click', (ev) => {
+                ev.preventDefault();
+                self.clearFeatures();
+            });
+        }
         this.ready = true;
     }
 
-    MapWidget.prototype.createMap = function() {
-        var map = new ol.Map({
+    createMap() {
+        return new ol.Map({
             target: this.options.map_id,
-            layers: [this.options.base_layer],
+            layers: [this.baseLayer],
             view: new ol.View({
                 zoom: this.options.default_zoom
             })
         });
-        return map;
-    };
+    }
 
-    MapWidget.prototype.createInteractions = function() {
+    createInteractions() {
         // Initialize the modify interaction
         this.interactions.modify = new ol.interaction.Modify({
             features: this.featureCollection,
@@ -135,8 +146,8 @@ ol.inherits(GeometryTypeControl, ol.control.Control);
         });
 
         // Initialize the draw interaction
-        var geomType = this.options.geom_name;
-        if (geomType === "Unknown" || geomType === "GeometryCollection") {
+        let geomType = this.options.geom_name;
+        if (geomType === "Geometry" || geomType === "GeometryCollection") {
             // Default to Point, but create icons to switch type
             geomType = "Point";
             this.currentGeometryType = new GeometryTypeControl({widget: this, type: "Point", active: true});
@@ -152,61 +163,61 @@ ol.inherits(GeometryTypeControl, ol.control.Control);
 
         this.map.addInteraction(this.interactions.draw);
         this.map.addInteraction(this.interactions.modify);
-    };
+    }
 
-    MapWidget.prototype.defaultCenter = function() {
-        var center = [this.options.default_lon, this.options.default_lat];
+    defaultCenter() {
+        const center = [this.options.default_lon, this.options.default_lat];
         if (this.options.map_srid) {
             return ol.proj.transform(center, 'EPSG:4326', this.map.getView().getProjection());
         }
         return center;
-    };
+    }
 
-    MapWidget.prototype.enableDrawing = function() {
+    enableDrawing() {
         this.interactions.draw.setActive(true);
         if (this.typeChoices) {
             // Show geometry type icons
-            var divs = document.getElementsByClassName("switch-type");
-            for (var i = 0; i !== divs.length; i++) {
+            const divs = document.getElementsByClassName("switch-type");
+            for (let i = 0; i !== divs.length; i++) {
                 divs[i].style.visibility = "visible";
             }
         }
-    };
+    }
 
-    MapWidget.prototype.disableDrawing = function() {
+    disableDrawing() {
         if (this.interactions.draw) {
             this.interactions.draw.setActive(false);
             if (this.typeChoices) {
                 // Hide geometry type icons
-                var divs = document.getElementsByClassName("switch-type");
-                for (var i = 0; i !== divs.length; i++) {
+                const divs = document.getElementsByClassName("switch-type");
+                for (let i = 0; i !== divs.length; i++) {
                     divs[i].style.visibility = "hidden";
                 }
             }
         }
-    };
+    }
 
-    MapWidget.prototype.clearFeatures = function() {
+    clearFeatures() {
         this.featureCollection.clear();
         // Empty textarea widget
         document.getElementById(this.options.id).value = '';
         this.enableDrawing();
-    };
+    }
 
-    MapWidget.prototype.serializeFeatures = function() {
+    serializeFeatures() {
         // Three use cases: GeometryCollection, multigeometries, and single geometry
-        var geometry = null;
-        var features = this.featureOverlay.getSource().getFeatures();
+        let geometry = null;
+        const features = this.featureOverlay.getSource().getFeatures();
         if (this.options.is_collection) {
             if (this.options.geom_name === "GeometryCollection") {
-                var geometries = [];
-                for (var i = 0; i < features.length; i++) {
+                const geometries = [];
+                for (let i = 0; i < features.length; i++) {
                     geometries.push(features[i].getGeometry());
                 }
                 geometry = new ol.geom.GeometryCollection(geometries);
             } else {
                 geometry = features[0].getGeometry().clone();
-                for (var j = 1; j < features.length; j++) {
+                for (let j = 1; j < features.length; j++) {
                     switch (geometry.getType()) {
                     case "MultiPoint":
                         geometry.appendPoint(features[j].getGeometry().getPoint(0));
@@ -224,8 +235,49 @@ ol.inherits(GeometryTypeControl, ol.control.Control);
                 geometry = features[0].getGeometry();
             }
         }
+        const jsonFormat = new ol.format.GeoJSON();
         document.getElementById(this.options.id).value = jsonFormat.writeGeometry(geometry);
-    };
+    }
+}
 
-    window.MapWidget = MapWidget;
-})();
+// Static property assignment (ES6-compatible)
+MapWidget.layerBuilder = {
+    nasaWorldview: () => {
+        return new ol.layer.Tile({
+            source: new ol.source.XYZ({
+                attributions: "NASA Worldview",
+                maxZoom: 8,
+                url: "https://map1{a-c}.vis.earthdata.nasa.gov/wmts-webmerc/" +
+                     "BlueMarble_ShadedRelief_Bathymetry/default/%7BTime%7D/" +
+                     "GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg"
+            })
+        });
+    },
+    osm: () => {
+        return new ol.layer.Tile({source: new ol.source.OSM()});
+    }
+};
+
+function initMapWidgetInSection(section) {
+    const maps = [];
+
+    section.querySelectorAll(".dj_map_wrapper").forEach((wrapper) => {
+        // Avoid initializing map widget on an empty form.
+        if (wrapper.id.includes('__prefix__')) {
+            return;
+        }
+        const textarea_id = wrapper.querySelector("textarea").id;
+        const options_script = wrapper.querySelector(`script#${textarea_id}_mapwidget_options`);
+        const options = JSON.parse(options_script.textContent);
+        options.id = textarea_id;
+        options.map_id = wrapper.querySelector(".dj_map").id;
+        maps.push(new MapWidget(options));
+    });
+
+    return maps;
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+    initMapWidgetInSection(document);
+    document.addEventListener('formset:added', (ev) => {initMapWidgetInSection(ev.target);});
+});
